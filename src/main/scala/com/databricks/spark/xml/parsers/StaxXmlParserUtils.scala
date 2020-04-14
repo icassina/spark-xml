@@ -1,11 +1,11 @@
 package com.databricks.spark.xml.parsers
 
+import com.databricks.spark.xml.XmlOptions
 import javax.xml.stream.XMLEventReader
 import javax.xml.stream.events._
 
 import scala.annotation.tailrec
-
-import com.databricks.spark.xml.XmlOptions
+import scala.collection.JavaConverters.asScalaIteratorConverter
 
 private[xml] object StaxXmlParserUtils {
   /**
@@ -13,7 +13,7 @@ private[xml] object StaxXmlParserUtils {
    */
   def skipUntil(parser: XMLEventReader, eventType: Int): XMLEvent = {
     var event = parser.peek
-    while(parser.hasNext && event.getEventType != eventType) {
+    while (parser.hasNext && event.getEventType != eventType) {
       event = parser.nextEvent
     }
     event
@@ -40,8 +40,8 @@ private[xml] object StaxXmlParserUtils {
    * Produces values map from given attributes.
    */
   def convertAttributesToValuesMap(
-      attributes: Array[Attribute],
-      options: XmlOptions): Map[String, String] = {
+                                    attributes: Array[Attribute],
+                                    options: XmlOptions): Map[String, String] = {
     if (options.excludeAttributeFlag) {
       Map.empty[String, String]
     } else {
@@ -49,7 +49,7 @@ private[xml] object StaxXmlParserUtils {
       val attrValues = attributes.map(_.getValue)
       val nullSafeValues = {
         if (options.treatEmptyValuesAsNulls) {
-          attrValues.map (v => if (v.trim.isEmpty) null else v)
+          attrValues.map(v => if (v.trim.isEmpty) null else v)
         } else {
           attrValues
         }
@@ -62,49 +62,56 @@ private[xml] object StaxXmlParserUtils {
   /**
    * Convert the current structure of XML document to a XML string.
    */
-  def currentStructureAsString(parser: XMLEventReader): String = {
-    // (Hyukjin) I could not find a proper method to produce the current document
-    // as a string. For Jackson, there is a method `copyCurrentStructure()`.
-    // So, it ended up with manually converting event by event to string.
-    def convertChildren(): String = {
-      var childrenXmlString = ""
-      parser.peek match {
-        case _: StartElement =>
-          childrenXmlString += currentStructureAsString(parser)
-        case c: Characters if c.isWhiteSpace =>
-          // There can be a `Characters` event between `StartElement`s.
-          // So, we need to check further to decide if this is a data or just
-          // a whitespace between them.
-          childrenXmlString += c.getData
-          parser.next
-          parser.peek match {
-            case _: StartElement =>
-              childrenXmlString += currentStructureAsString(parser)
-            case _: XMLEvent =>
-              // do nothing
-          }
-        case c: Characters =>
-          childrenXmlString += c.getData
-        case _: XMLEvent =>
-          // do nothing
-      }
-      childrenXmlString
+  def currentStructureAsString(parser: XMLEventReader, field: StartElement): String = {
+    def fieldDepthDelta(event: XMLEvent) = event match {
+      case startElement: StartElement if startElement.getName == field.getName => +1
+      case endElement: EndElement if endElement.getName == field.getName => -1
+      case _ => 0
     }
 
-    var xmlString = ""
-    var shouldStop = false
-    while (!shouldStop) {
-      parser.nextEvent match {
-        case e: StartElement =>
-          xmlString += "<" + e.getName + ">"
-          xmlString += convertChildren()
-        case e: EndElement =>
-          xmlString += "</" + e.getName + ">"
-          shouldStop = checkEndElement(parser)
-        case _: XMLEvent => // do nothing
+    @tailrec
+    def iterate(fieldDepth: Int, buffer: StringBuffer): String = {
+      if (fieldDepth == 0) {
+        buffer.toString
+      } else {
+        parser.peek() match {
+          case startElement: StartElement =>
+            parser.next()
+            val elementWithAttributes = startElement.getAttributes.asScala
+              .foldLeft(buffer.append(s"<${startElement.getName}")) {
+                case (runningBuffer, attribute: Attribute) =>
+                  runningBuffer
+                    .append(s""" "${attribute.getName.getLocalPart}"="${attribute.getValue}"""")
+              }
+
+            val updatedBuffer = parser.peek() match {
+              case endElement: EndElement if endElement.getName == startElement.getName =>
+                parser.nextEvent()
+                elementWithAttributes.append("/>")
+              case _ => elementWithAttributes.append(">")
+            }
+
+            iterate(fieldDepth + fieldDepthDelta(startElement), updatedBuffer)
+          case endElement: EndElement if endElement.getName == field.getName && fieldDepth <= 1 =>
+            buffer.toString
+          case endElement: EndElement =>
+            parser.next()
+            iterate(
+              fieldDepth = fieldDepth + fieldDepthDelta(endElement),
+              buffer = buffer.append(s"</${endElement.getName}>"))
+          case characters: Characters =>
+            parser.next()
+            iterate(
+              fieldDepth = fieldDepth + fieldDepthDelta(characters),
+              buffer = buffer.append(s"${characters.getData}"))
+          case _: EndDocument =>
+            parser.next()
+            buffer.toString
+        }
       }
     }
-    xmlString
+
+    iterate(1, new StringBuffer())
   }
 
   /**

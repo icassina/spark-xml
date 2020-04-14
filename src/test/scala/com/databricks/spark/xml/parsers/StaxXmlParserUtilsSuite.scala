@@ -16,14 +16,17 @@
 package com.databricks.spark.xml.parsers
 
 import java.io.StringReader
+
 import javax.xml.stream.events.Attribute
-import javax.xml.stream.{XMLInputFactory, XMLStreamConstants}
+import javax.xml.stream.{ XMLInputFactory, XMLStreamConstants }
 
 import scala.collection.JavaConverters._
-
-import org.scalatest.{BeforeAndAfterAll, FunSuite}
-
+import org.scalatest.{ BeforeAndAfterAll, FunSuite }
 import com.databricks.spark.xml.XmlOptions
+import com.sun.xml.internal.stream.events.StartElementEvent
+import javax.xml.namespace.QName
+
+import scala.xml.XML
 
 final class StaxXmlParserUtilsSuite extends FunSuite with BeforeAndAfterAll {
 
@@ -59,15 +62,19 @@ final class StaxXmlParserUtilsSuite extends FunSuite with BeforeAndAfterAll {
   }
 
   test("Convert current structure to string") {
-    val input = <ROW><id>2</id><info>
-      <name>Sam Mad Dog Smith</name><amount><small>1</small><large>9</large></amount></info></ROW>
+    val input = <ROW><id>2</id><info><name>Sam Mad Dog Smith</name><amount><small>1</small>
+      <large>9</large></amount>Some Text</info></ROW>
+
     val parser = factory.createXMLEventReader(new StringReader(input.toString))
     // Skip until </id>
     StaxXmlParserUtils.skipUntil(parser, XMLStreamConstants.END_ELEMENT)
-    val xmlString = StaxXmlParserUtils.currentStructureAsString(parser)
-    val expected = <info>
-      <name>Sam Mad Dog Smith</name><amount><small>1</small><large>9</large></amount></info>
-    assert(xmlString === expected.toString())
+    val xmlString = StaxXmlParserUtils.currentStructureAsString(parser,
+      new StartElementEvent(QName.valueOf("ROW")))
+
+    val expected = <info><name>Sam Mad Dog Smith</name><amount><small>1</small>
+      <large>9</large></amount>Some Text</info>
+
+    assert(XML.loadString(xmlString) === expected)
   }
 
   test("Skip XML children") {

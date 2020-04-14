@@ -17,23 +17,20 @@ package com.databricks.spark.xml.parsers
 
 import java.io.StringReader
 
-import javax.xml.stream.events.{Attribute, XMLEvent}
-import javax.xml.stream.events._
+import com.databricks.spark.xml.XmlOptions
+import com.databricks.spark.xml.util.TypeCast._
+import com.databricks.spark.xml.util._
 import javax.xml.stream._
-
-import scala.collection.mutable.ArrayBuffer
-import scala.collection.JavaConverters._
-import scala.util.control.NonFatal
-import scala.util.Try
-
-import org.slf4j.LoggerFactory
-
+import javax.xml.stream.events.{ Attribute, XMLEvent, _ }
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
-import com.databricks.spark.xml.util.TypeCast._
-import com.databricks.spark.xml.XmlOptions
-import com.databricks.spark.xml.util._
+import org.slf4j.LoggerFactory
+
+import scala.collection.JavaConverters._
+import scala.collection.mutable.ArrayBuffer
+import scala.util.Try
+import scala.util.control.NonFatal
 
 /**
  * Wraps parser to iteration process.
@@ -85,7 +82,7 @@ private[xml] object StaxXmlParser extends Serializable {
       factory.setProperty(XMLInputFactory.IS_COALESCING, true)
       val filter = new EventFilter {
         override def accept(event: XMLEvent): Boolean =
-          // Ignore comments. This library does not treat comments.
+        // Ignore comments. This library does not treat comments.
           event.getEventType != XMLStreamConstants.COMMENT
       }
 
@@ -117,17 +114,18 @@ private[xml] object StaxXmlParser extends Serializable {
   private[xml] def convertField(
       parser: XMLEventReader,
       dataType: DataType,
-      options: XmlOptions): Any = {
+      options: XmlOptions,
+      field: StartElement): Any = {
     def convertComplicatedType(dt: DataType): Any = dt match {
       case st: StructType => convertObject(parser, st, options)
       case MapType(StringType, vt, _) => convertMap(parser, vt, options)
-      case ArrayType(st, _) => convertField(parser, st, options)
-      case _: StringType => StaxXmlParserUtils.currentStructureAsString(parser)
+      case ArrayType(st, _) => convertField(parser, st, options, field)
+      case _: StringType => StaxXmlParserUtils.currentStructureAsString(parser, field)
     }
 
     (parser.peek, dataType) match {
       case (_: StartElement, dt: DataType) => convertComplicatedType(dt)
-      case (_: EndElement, _: StringType) =>
+      case (e: EndElement, _: StringType) if e.getName == field.getName =>
         // Empty. It's null if these are explicitly treated as null, or "" is the null value
         if (options.treatEmptyValuesAsNulls || options.nullValue == ""){
           null
@@ -145,7 +143,7 @@ private[xml] object StaxXmlParser extends Serializable {
           case _: EndElement if data.isEmpty => null
           case _: EndElement if options.treatEmptyValuesAsNulls => null
           case _: EndElement => data
-          case _ => convertField(parser, dataType, options)
+          case _ => convertField(parser, dataType, options, field)
         }
 
       case (c: Characters, ArrayType(st, _)) =>
@@ -156,6 +154,8 @@ private[xml] object StaxXmlParser extends Serializable {
         // due to `valueTag` for elements having attributes but no child.
         val dt = st.filter(_.name == options.valueTag).head.dataType
         convertTo(c.getData, dt, options)
+      case (_: Characters, _: StringType) =>
+        StaxXmlParserUtils.currentStructureAsString(parser, field)
       case (c: Characters, dt: DataType) =>
         convertTo(c.getData, dt, options)
       case (e: XMLEvent, dt: DataType) =>
@@ -178,7 +178,7 @@ private[xml] object StaxXmlParser extends Serializable {
       parser.nextEvent match {
         case e: StartElement =>
           keys += e.getName.getLocalPart
-          values += convertField(parser, valueType, options)
+          values += convertField(parser, valueType, options, e)
         case _: EndElement =>
           shouldStop = StaxXmlParserUtils.checkEndElement(parser)
         case _ => // do nothing
@@ -214,7 +214,8 @@ private[xml] object StaxXmlParser extends Serializable {
       parser: XMLEventReader,
       schema: StructType,
       options: XmlOptions,
-      attributes: Array[Attribute] = Array.empty): Row = {
+      attributes: Array[Attribute] = Array.empty,
+      field: StartElement): Row = {
     // TODO: This method might have to be removed. Some logics duplicate `convertObject()`
     val row = new Array[Any](schema.length)
 
@@ -222,7 +223,7 @@ private[xml] object StaxXmlParser extends Serializable {
     val attributesMap = convertAttributes(attributes, schema, options)
 
     // Then, we read elements here.
-    val fieldsMap = convertField(parser, schema, options) match {
+    val fieldsMap = convertField(parser, schema, options, field) match {
       case row: Row =>
         Map(schema.map(_.name).zip(row.toSeq): _*)
       case v if schema.fieldNames.contains(options.valueTag) =>
@@ -271,12 +272,10 @@ private[xml] object StaxXmlParser extends Serializable {
       parser.nextEvent match {
         case e: StartElement => try {
           val attributes = e.getAttributes.asScala.map(_.asInstanceOf[Attribute]).toArray
-          val field = e.asStartElement.getName.getLocalPart
-
-          nameToIndex.get(field) match {
+          nameToIndex.get(e.getName.getLocalPart) match {
             case Some(index) => schema(index).dataType match {
               case st: StructType =>
-                row(index) = convertObjectWithAttributes(parser, st, options, attributes)
+                row(index) = convertObjectWithAttributes(parser, st, options, attributes, e)
 
               case ArrayType(dt: DataType, _) =>
                 val values = Option(row(index))
@@ -284,14 +283,14 @@ private[xml] object StaxXmlParser extends Serializable {
                   .getOrElse(ArrayBuffer.empty[Any])
                 val newValue = dt match {
                   case st: StructType =>
-                    convertObjectWithAttributes(parser, st, options, attributes)
+                    convertObjectWithAttributes(parser, st, options, attributes, e)
                   case dt: DataType =>
-                    convertField(parser, dt, options)
+                    convertField(parser, dt, options, e)
                 }
                 row(index) = values :+ newValue
 
               case dt: DataType =>
-                row(index) = convertField(parser, dt, options)
+                row(index) = convertField(parser, dt, options, e)
             }
 
             case None =>
