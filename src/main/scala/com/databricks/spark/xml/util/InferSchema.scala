@@ -121,6 +121,9 @@ private[xml] object InferSchema {
       value match {
         case null => NullType
         case v if v.isEmpty => NullType
+        case v if !options.zeroPrefixedStringsAsNumber
+          && v.length > 1
+          && v.headOption.contains('0') => StringType
         case v if isLong(v) => LongType
         case v if isInteger(v) => IntegerType
         case v if isDouble(v) => DoubleType
