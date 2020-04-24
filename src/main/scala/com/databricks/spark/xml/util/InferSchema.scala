@@ -18,9 +18,11 @@ package com.databricks.spark.xml.util
 import java.io.StringReader
 import java.util.Comparator
 
-import javax.xml.stream._
-import javax.xml.stream.events._
+import javax.xml.stream.XMLEventReader
+import javax.xml.stream.events.{Attribute, Characters, EndElement, StartElement, XMLEvent}
+import javax.xml.transform.stream.StreamSource
 
+import scala.annotation.tailrec
 import scala.collection.JavaConverters._
 import scala.collection.Seq
 import scala.collection.mutable.ArrayBuffer
@@ -80,26 +82,16 @@ private[xml] object InferSchema {
     }
     // perform schema inference on each row and merge afterwards
     val rootType = schemaData.mapPartitions { iter =>
-      val factory = XMLInputFactory.newInstance()
-      factory.setProperty(XMLInputFactory.IS_NAMESPACE_AWARE, false)
-      factory.setProperty(XMLInputFactory.IS_COALESCING, true)
-      val filter = new EventFilter {
-        override def accept(event: XMLEvent): Boolean =
-          // Ignore comments. This library does not treat comments.
-          event.getEventType != XMLStreamConstants.COMMENT
-      }
+      val xsdSchema = Option(options.rowValidationXSDPath).map(ValidatorUtil.getSchema)
 
       iter.flatMap { xml =>
-        // It does not have to skip for white space, since [[XmlInputFormat]]
-        // always finds the root tag without a heading space.
-        val eventReader = factory.createXMLEventReader(new StringReader(xml))
-        val parser = factory.createFilteredReader(eventReader, filter)
         try {
-          val rootEvent =
-            StaxXmlParserUtils.skipUntil(parser, XMLStreamConstants.START_ELEMENT)
-          val rootAttributes =
-            rootEvent.asStartElement.getAttributes.asScala.map(_.asInstanceOf[Attribute]).toArray
+          xsdSchema.foreach { schema =>
+            schema.newValidator().validate(new StreamSource(new StringReader(xml)))
+          }
 
+          val parser = StaxXmlParserUtils.filteredReader(xml)
+          val rootAttributes = StaxXmlParserUtils.gatherRootAttributes(parser)
           Some(inferObject(parser, options, rootAttributes))
         } catch {
           case NonFatal(_) if options.parseMode == PermissiveMode =>
@@ -141,6 +133,7 @@ private[xml] object InferSchema {
     }
   }
 
+  @tailrec
   private def inferField(parser: XMLEventReader, options: XmlOptions): DataType = {
     parser.peek match {
       case _: EndElement => NullType
@@ -158,8 +151,19 @@ private[xml] object InferSchema {
           case _ => inferField(parser, options)
         }
       case c: Characters if !c.isWhiteSpace =>
-        // This means data exists
-        inferFrom(c.getData, options)
+        // This could be the characters of a character-only element, or could have mixed
+        // characters and other complex structure
+        val characterType = inferFrom(c.getData, options)
+        parser.nextEvent()
+        parser.peek match {
+          case _: StartElement =>
+            // Some more elements follow; so ignore the characters.
+            // Use the schema of the rest
+            inferObject(parser, options).asInstanceOf[StructType]
+          case _ =>
+            // That's all, just the character-only body; use that as the type
+            characterType
+        }
       case e: XMLEvent =>
         throw new IllegalArgumentException(s"Failed to parse data with unexpected event $e")
     }

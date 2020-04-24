@@ -27,6 +27,7 @@ import org.apache.hadoop.io.compress.GzipCodec
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
 
 import com.databricks.spark.xml.XmlOptions._
+import com.databricks.spark.xml.functions._
 import com.databricks.spark.xml.util._
 
 import org.apache.spark.sql.types._
@@ -74,6 +75,13 @@ final class XmlSuite extends FunSuite with BeforeAndAfterAll {
   private val attributesStartWithNewLineCR = resDir + "attributesStartWithNewLineCR.xml"
   private val selfClosingTag = resDir + "self-closing-tag.xml"
   private val textColumn = resDir + "textColumn.xml"
+  private val processing = resDir + "processing.xml"
+  private val mixedChildren = resDir + "mixed_children.xml"
+  private val mixedChildren2 = resDir + "mixed_children_2.xml"
+  private val basket = resDir + "basket.xml"
+  private val basketInvalid = resDir + "basket_invalid.xml"
+  private val basketXSD = resDir + "basket.xsd"
+  private val unclosedTag = resDir + "unclosed_tag.xml"
 
   private val booksTag = "book"
   private val booksRootTag = "books"
@@ -89,16 +97,19 @@ final class XmlSuite extends FunSuite with BeforeAndAfterAll {
   private val numGPS = 2
   private val numFiasHouses = 37
 
-  private var spark: SparkSession = _
-  private var tempDir: Path = _
-
-  override protected def beforeAll(): Unit = {
-    super.beforeAll()
-    spark = SparkSession.builder().
+  private lazy val spark: SparkSession = {
+    // It is intentionally a val to allow import implicits.
+    SparkSession.builder().
       master("local[2]").
       appName("XmlSuite").
       config("spark.ui.enabled", false).
       getOrCreate()
+  }
+  private var tempDir: Path = _
+
+  override protected def beforeAll(): Unit = {
+    super.beforeAll()
+    spark  // Initialize Spark session
     tempDir = Files.createTempDirectory("XmlSuite")
     tempDir.toFile.deleteOnExit()
   }
@@ -106,7 +117,6 @@ final class XmlSuite extends FunSuite with BeforeAndAfterAll {
   override protected def afterAll(): Unit = {
     try {
       spark.stop()
-      spark = null
     } finally {
       super.afterAll()
     }
@@ -289,6 +299,17 @@ final class XmlSuite extends FunSuite with BeforeAndAfterAll {
         .withFailFast(true)
         .xmlFile(spark, carsMalformedFile)
         .collect()
+    }
+    assert(exceptionInParse.getMessage.contains("Malformed line in FAILFAST mode"))
+  }
+
+  test("test FAILFAST with unclosed tag") {
+    val exceptionInParse = intercept[SparkException] {
+      spark.read
+        .option("rowTag", "book")
+        .option("mode", "FAILFAST")
+        .xml(unclosedTag)
+        .show()
     }
     assert(exceptionInParse.getMessage.contains("Malformed line in FAILFAST mode"))
   }
@@ -1039,11 +1060,176 @@ final class XmlSuite extends FunSuite with BeforeAndAfterAll {
   }
 
   test("test default data type infer strategy") {
-    val defualt = spark.read
+    val default = spark.read
       .option("rowTag", "ROW")
       .option("inferSchema", "true")
       .xml(textColumn)
-    assert(defualt.head().getAs[Int]("col1") === 10)
+    assert(default.head().getAs[Int]("col1") === 10)
+  }
+
+  test("test XML with processing instruction") {
+    val processingDF = spark.read
+      .option("rowTag", "foo")
+      .option("inferSchema", "true")
+      .xml(processing)
+    assert(processingDF.count() === 1)
+  }
+
+  test("test mixed text and element children") {
+    val mixedDF = spark.read
+      .option("rowTag", "root")
+      .option("inferSchema", true)
+      .xml(mixedChildren)
+    val mixedRow = mixedDF.head()
+    assert(mixedRow.getAs[Row](0).toSeq === Seq(" lorem "))
+    assert(mixedRow.getString(1) === " ipsum ")
+  }
+
+  test("test mixed text and complex element children") {
+    val mixedDF = spark.read
+      .option("rowTag", "root")
+      .option("inferSchema", true)
+      .xml(mixedChildren2)
+    assert(mixedDF.select("foo.bar").head().getString(0) === " lorem ")
+    assert(mixedDF.select("foo.baz.bing").head().getLong(0) === 2)
+    assert(mixedDF.select("missing").head().getString(0) === " ipsum ")
+  }
+
+  test("test XSD validation") {
+    val basketDF = spark.read
+      .option("rowTag", "basket")
+      .option("inferSchema", true)
+      .option("rowValidationXSDPath", basketXSD)
+      .xml(basket)
+    // Mostly checking it doesn't fail
+    assert(basketDF.selectExpr("entry[0].key").head().getLong(0) === 9027)
+  }
+
+  test("test XSD validation with validation error") {
+    val basketDF = spark.read
+      .option("rowTag", "basket")
+      .option("inferSchema", true)
+      .option("rowValidationXSDPath", basketXSD)
+      .option("mode", "PERMISSIVE")
+      .option("columnNameOfCorruptRecord", "_malformed_records")
+      .xml(basketInvalid)
+    assert(basketDF.select("_malformed_records").head().getString(0).startsWith("<basket>"))
+  }
+
+  test("test XSD validation with addFile() with validation error") {
+    spark.sparkContext.addFile(basketXSD)
+    val basketDF = spark.read
+      .option("rowTag", "basket")
+      .option("inferSchema", true)
+      .option("rowValidationXSDPath", "basket.xsd")
+      .option("mode", "PERMISSIVE")
+      .option("columnNameOfCorruptRecord", "_malformed_records")
+      .xml(basketInvalid)
+    assert(basketDF.select("_malformed_records").head().getString(0).startsWith("<basket>"))
+  }
+
+  test("test xmlRdd") {
+    val data = Seq(
+      "<ROW><year>2012</year><make>Tesla</make><model>S</model><comment>No comment</comment></ROW>",
+      "<ROW><year>1997</year><make>Ford</make><model>E350</model><comment>Get one</comment></ROW>",
+      "<ROW><year>2015</year><make>Chevy</make><model>Volt</model><comment>No</comment></ROW>")
+    val rdd = spark.sparkContext.parallelize(data)
+    assert(new XmlReader().xmlRdd(spark, rdd).collect().length === 3)
+  }
+
+  test("test xmlDataset and spark.read.xml(dataset)") {
+    import spark.implicits._
+
+    val data = Seq(
+      "<ROW><year>2012</year><make>Tesla</make><model>S</model><comment>No comment</comment></ROW>",
+      "<ROW><year>1997</year><make>Ford</make><model>E350</model><comment>Get one</comment></ROW>",
+      "<ROW><year>2015</year><make>Chevy</make><model>Volt</model><comment>No</comment></ROW>")
+    val df = spark.createDataFrame(data.map(Tuple1(_)))
+
+    assert(new XmlReader().xmlDataset(spark, df.as[String]).collect().length === 3)
+    assert(spark.read.xml(df.as[String]).collect().length === 3)
+  }
+
+  test("from_xml basic test") {
+    val xmlData =
+      """<parent foo="bar"><pid>14ft3</pid>
+        |  <name>dave guy</name>
+        |</parent>
+       """.stripMargin
+    import spark.implicits._
+    val df = spark.createDataFrame(Seq((8, xmlData))).toDF("number", "payload")
+    val xmlSchema = schema_of_xml_df(df.select("payload"))
+    val expectedSchema = df.schema.add("decoded", xmlSchema)
+    val result = df.withColumn("decoded", from_xml(df.col("payload"), xmlSchema))
+
+    assert(expectedSchema === result.schema)
+    assert(result.select("decoded.pid").head().getString(0) === "14ft3")
+    assert(result.select("decoded._foo").head().getString(0) === "bar")
+  }
+
+  test("from_xml array basic test") {
+    val xmlData = Array(
+      "<parent><pid>14ft3</pid><name>dave guy</name></parent>",
+      "<parent><pid>12345</pid><name>other guy</name></parent>")
+    import spark.implicits._
+    val df = spark.createDataFrame(Seq((8, xmlData))).toDF("number", "payload")
+    val xmlSchema = schema_of_xml_array(df.select("payload").as[Array[String]])
+    val expectedSchema = df.schema.add("decoded", xmlSchema)
+    val result = df.withColumn("decoded", from_xml(df.col("payload"), xmlSchema))
+
+    assert(expectedSchema === result.schema)
+    assert(result.selectExpr("decoded[0].pid").head().getString(0) === "14ft3")
+    assert(result.selectExpr("decoded[1].pid").head().getString(0) === "12345")
+  }
+
+  test("from_xml error test") {
+    // XML contains error
+    val xmlData =
+      """<parent foo="bar"><pid>14ft3
+        |  <name>dave guy</name>
+        |</parent>
+       """.stripMargin
+    import spark.implicits._
+    val df = spark.createDataFrame(Seq((8, xmlData))).toDF("number", "payload")
+    val xmlSchema = schema_of_xml_df(df.select("payload"))
+    val result = df.withColumn("decoded", from_xml(df.col("payload"), xmlSchema))
+    assert(result.select("decoded._corrupt_record").head().getString(0).nonEmpty)
+  }
+
+  test("from_xml_string basic test") {
+    val xmlData =
+      """<parent foo="bar"><pid>14ft3</pid>
+        |  <name>dave guy</name>
+        |</parent>
+       """.stripMargin
+    import spark.implicits._
+    val df = spark.createDataFrame(Seq((8, xmlData))).toDF("number", "payload")
+    val xmlSchema = schema_of_xml_df(df.select("payload"))
+    val result = from_xml_string(xmlData, xmlSchema)
+
+    assert(result.getString(0) === "bar")
+    assert(result.getString(1) === "dave guy")
+    assert(result.getString(2) === "14ft3")
+  }
+
+  test("from_xml with PERMISSIVE parse mode with no corrupt col schema") {
+    // XML contains error
+    val xmlData =
+      """<parent foo="bar"><pid>14ft3
+        |  <name>dave guy</name>
+        |</parent>
+       """.stripMargin
+    val xmlDataNoError =
+      """<parent foo="bar">
+        |  <name>dave guy</name>
+        |</parent>
+       """.stripMargin
+    import spark.implicits._
+    val dfNoError = spark.createDataFrame(Seq((8, xmlDataNoError))).toDF("number", "payload")
+    val xmlSchema = schema_of_xml_df(dfNoError.select("payload"))
+    val df = spark.createDataFrame(Seq((8, xmlData))).toDF("number", "payload")
+    val result = df.withColumn("decoded", from_xml(df.col("payload"), xmlSchema))
+    assert(result.select("decoded").head().get(0) === null)
   }
 
 }

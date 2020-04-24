@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.org/databricks/spark-xml.svg?branch=master)](https://travis-ci.org/databricks/spark-xml) [![codecov](https://codecov.io/gh/databricks/spark-xml/branch/master/graph/badge.svg)](https://codecov.io/gh/databricks/spark-xml)
 
-- A library for parsing and querying XML data with Apache Spark, for Spark SQL and DataFrames.
+- A library for parsing and querying XML data with [Apache Spark](https://spark.apache.org), for Spark SQL and DataFrames.
 The structure and test tools are mostly copied from [CSV Data Source for Spark](https://github.com/databricks/spark-csv).
 
 - This package supports to process format-free XML files in a distributed way, unlike JSON datasource in Spark restricts in-line JSON format.
@@ -10,10 +10,12 @@ The structure and test tools are mostly copied from [CSV Data Source for Spark](
 
 ## Requirements
 
-This library requires Spark 2.2+ for 0.5.x.
-
-For Spark 2.0.x 2.1.x, use version 0.4.x.
-For a version that works with Spark 1.x, please check for [branch-0.3](https://github.com/databricks/spark-xml/tree/branch-0.3).
+| spark-xml | Spark         |
+| --------- | ------------- |
+| 0.6.x+    | 2.3.x+        |
+| 0.5.x     | 2.2.x - 2.4.x |
+| 0.4.x     | 2.0.x - 2.1.x |
+| 0.3.x     | 1.x           |
 
 ## Linking
 You can link against this library in your program at the following coordinates:
@@ -23,7 +25,7 @@ You can link against this library in your program at the following coordinates:
 ```
 groupId: com.databricks
 artifactId: spark-xml_2.11
-version: 0.5.0
+version: 0.9.0
 ```
 
 ### Scala 2.12
@@ -31,7 +33,7 @@ version: 0.5.0
 ```
 groupId: com.databricks
 artifactId: spark-xml_2.12
-version: 0.5.0
+version: 0.9.0
 ```
 
 ## Using with Spark shell
@@ -40,17 +42,20 @@ This package can be added to Spark using the `--packages` command line option. F
 
 ### Spark compiled with Scala 2.11
 ```
-$SPARK_HOME/bin/spark-shell --packages com.databricks:spark-xml_2.11:0.5.0
+$SPARK_HOME/bin/spark-shell --packages com.databricks:spark-xml_2.11:0.9.0
 ```
 
 ### Spark compiled with Scala 2.12
 ```
-$SPARK_HOME/bin/spark-shell --packages com.databricks:spark-xml_2.12:0.5.0
+$SPARK_HOME/bin/spark-shell --packages com.databricks:spark-xml_2.12:0.9.0
 ```
 
 ## Features
-This package allows reading XML files in local or distributed filesystem as [Spark DataFrames](https://spark.apache.org/docs/1.6.0/sql-programming-guide.html).
+
+This package allows reading XML files in local or distributed filesystem as [Spark DataFrames](https://spark.apache.org/docs/latest/sql-programming-guide.html).
+
 When reading files the API accepts several options:
+
 * `path`: Location of files. Similar to Spark can accept standard Hadoop globbing expressions.
 * `rowTag`: The row tag of your xml files to treat as a row. For example, in this xml `<books> <book><book> ...</books>`, the appropriate value would be `book`. Default is `ROW`.
 * `samplingRatio`: Sampling ratio for inferring schema (0.0 ~ 1). Default is 1. Possible types are `StructType`, `ArrayType`, `StringType`, `LongType`, `DoubleType`, `BooleanType`, `TimestampType` and `NullType`, unless user provides a schema for this.
@@ -68,8 +73,15 @@ When reading files the API accepts several options:
 * `valueTag`: The tag used for the value when there are attributes in the element having no child. Default is `_VALUE`.
 * `charset`: Defaults to 'UTF-8' but can be set to other valid charset names
 * `ignoreSurroundingSpaces`: Defines whether or not surrounding whitespaces from values being read should be skipped. Default is false.
+* `rowValidationXSDPath`: Path to an XSD file that is used to validate the XML for each row individually. Rows that fail to 
+validate are treated like parse errors as above. The XSD does not otherwise affect the schema provided, or inferred. 
+Note that if the same local path is not already also visible on the executors in the cluster, then the XSD and any others 
+it depends on should be added to the Spark executors with 
+[`SparkContext.addFile`](https://spark.apache.org/docs/latest/api/scala/index.html#org.apache.spark.SparkContext@addFile(path:String):Unit).
+In this case, to use local XSD `/foo/bar.xsd`, call `addFile("/foo/bar.xsd")` and pass just `"bar.xsd"` as `rowValidationXSDPath`. New in 0.8.0.
 
 When writing files the API accepts several options:
+
 * `path`: Location to write files.
 * `rowTag`: The row tag of your xml files to treat as a row. For example, in this xml `<books> <book><book> ...</books>`, the appropriate value would be `book`. Default is `ROW`.
 * `rootTag`: The root tag of your xml files to treat as the root. For example, in this xml `<books> <book><book> ...</books>`, the appropriate value would be `books`. Default is `ROWS`.
@@ -79,6 +91,59 @@ When writing files the API accepts several options:
 * `compression`: compression codec to use when saving to file. Should be the fully qualified name of a class implementing `org.apache.hadoop.io.compress.CompressionCodec` or one of case-insensitive shorten names (`bzip2`, `gzip`, `lz4`, and `snappy`). Defaults to no compression when a codec is not specified.
 
 Currently it supports the shortened name usage. You can use just `xml` instead of `com.databricks.spark.xml`.
+
+### Parsing Nested XML
+
+Although primarily used to convert (portions of) large XML documents into a `DataFrame`, from version 0.8.0 onwards,
+`spark-xml` can also parse XML in a string-valued column in an existing DataFrame with `from_xml`, in order to add
+it as a new column with parsed results as a struct.
+
+```scala
+import com.databricks.spark.xml.functions.from_xml
+import com.databricks.spark.xml.schema_of_xml
+import spark.implicits._
+val df = ... /// DataFrame with XML in column 'payload' 
+val payloadSchema = schema_of_xml(df.select("payload").as[String])
+val parsed = df.withColumn("parsed", from_xml($"payload", payloadSchema))
+```
+
+- This can convert arrays of strings containing XML to arrays of parsed structs. Use `schema_of_xml_array` instead
+- `com.databricks.spark.xml.from_xml_string` is an alternative that operates on a String directly instead of a column,
+  for use in UDFs
+- If you use `DROPMALFORMED` mode with `from_xml`, then XML values that do not parse correctly will result in a
+  `null` value for the column. No rows will be dropped.
+- If you use `PERMISSIVE` mode with `from_xml` et al, which is the default, then the parse mode will actually
+  instead default to `DROPMALFORMED`.
+  If however you include a column in the schema for `from_xml` that matches the `columnNameOfCorruptRecord`, then
+  `PERMISSIVE` mode will still output malformed records to that column in the resulting struct. 
+  
+#### Pyspark notes
+
+The functions above are exposed in the Scala API only, at the moment, as there is no separate Python package
+for `spark-xml`. They can be accessed from Pyspark by manually declaring some helper functions that call
+into the JVM-based API from Python. Example:
+
+```python
+from pyspark.sql.column import Column, _to_java_column
+from pyspark.sql.types import _parse_datatype_json_string
+
+def ext_from_xml(xml_column, schema, options={}):
+    java_column = _to_java_column(xml_column.cast('string'))
+    java_schema = spark._jsparkSession.parseDataType(schema.json())
+    scala_map = spark._jvm.org.apache.spark.api.python.PythonUtils.toScalaMap(options)
+    jc = spark._jvm.com.databricks.spark.xml.functions.from_xml(
+        java_column, java_schema, scala_map)
+    return Column(jc)
+
+def ext_schema_of_xml_df(df, options={}):
+    assert len(df.columns) == 1
+
+    scala_options = spark._jvm.PythonUtils.toScalaMap(options)
+    java_xml_module = getattr(getattr(
+        spark._jvm.com.databricks.spark.xml, "package$"), "MODULE$")
+    java_schema = java_xml_module.schema_of_xml_df(df._jdf, scala_options)
+    return _parse_datatype_json_string(java_schema.json())
+```
 
 ## Structure Conversion
 
@@ -319,7 +384,7 @@ Automatically infer schema (data types)
 ```R
 library(SparkR)
 
-sparkR.session("local[4]", sparkPackages = c("com.databricks:spark-xml_2.10:0.5"))
+sparkR.session("local[4]", sparkPackages = c("com.databricks:spark-xml_2.11:0.9.0"))
 
 df <- read.df("books.xml", source = "xml", rowTag = "book")
 
@@ -331,7 +396,7 @@ You can manually specify schema:
 ```R
 library(SparkR)
 
-sparkR.session("local[4]", sparkPackages = c("com.databricks:spark-xml_2.10:0.5"))
+sparkR.session("local[4]", sparkPackages = c("com.databricks:spark-xml_2.11:0.9.0"))
 customSchema <- structType(
   structField("_id", "string"),
   structField("author", "string"),
@@ -354,7 +419,7 @@ which you may make direct use of as follows:
 
 ```scala
 import com.databricks.spark.xml.XmlInputFormat
-import org.apache.spark.SparkContext;
+import org.apache.spark.SparkContext
 import org.apache.hadoop.io.{LongWritable, Text}
 
 val sc: SparkContext = _

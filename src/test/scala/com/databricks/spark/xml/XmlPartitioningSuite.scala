@@ -11,46 +11,61 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.databricks.spark.xml
 
-import java.io.File
+package com.databricks.spark.xml
 
 import org.apache.spark.sql.SparkSession
 import org.scalatest.{ BeforeAndAfterAll, FunSuite, Matchers }
 
+/**
+ * Tests various cases of partition size, compression.
+ */
 final class XmlPartitioningSuite extends FunSuite with Matchers with BeforeAndAfterAll {
 
-  private var spark: SparkSession = _
-
-  override protected def beforeAll(): Unit = {
-    super.beforeAll()
-    spark = SparkSession.builder()
+  private def doPartitionTest(suffix: String, blockSize: Long, large: Boolean): Unit = {
+    val spark = SparkSession.builder()
       .master("local[2]")
       .appName("XmlPartitioningSuite")
       .config("spark.ui.enabled", false)
-      // chosen to partition input file in the middle of rowTag element
-      .config("spark.hadoop.fs.local.block.size", 0x2096.toString)
+      .config("spark.hadoop.fs.local.block.size", blockSize)
       .getOrCreate()
-  }
-
-  override protected def afterAll(): Unit = {
     try {
-      spark.stop()
+      val fileName = s"fias_house${if (large) ".large" else ""}.xml$suffix"
+      val xmlFile = getClass.getClassLoader.getResource(fileName).getFile
+      val results = spark.read.option("rowTag", "House").option("mode", "FAILFAST").xml(xmlFile)
+      // Test file has 37 records; large file is 20x the records
+      assert(results.count() === (if (large) 740 else 37))
     } finally {
-      super.afterAll()
+      spark.stop()
     }
-    spark = null
   }
 
-  test("Fails when file is partitioned in the middle of a rowTag element") {
-    val xmlFile = new File(this.getClass.getClassLoader.getResource("fias_house.xml").getFile)
-
-    val results = spark.read
-      .option("rowTag", "House")
-      .option("mode", "FAILFAST")
-      .format("xml")
-      .load(xmlFile.getAbsolutePath)
-
-    results.count() shouldBe 37
+  test("Uncompressed small file with specially chosen block size") {
+    doPartitionTest("", 8342, false)
   }
+
+  test("Uncompressed small file with small block size") {
+    doPartitionTest("", 500, false)
+  }
+
+  test("bzip2 small file with small block size") {
+    doPartitionTest(".bz2", 500, false)
+  }
+
+  test("bzip2 large file with small block size") {
+    // Note, the large bzip2 test file was compressed such that there are several blocks
+    // in the compressed input (e.g. bzip2 -1 on a file with much more than 100k data)
+    doPartitionTest(".bz2", 500, true)
+  }
+
+  test("gzip small file") {
+    // Block size won't matter
+    doPartitionTest(".gz", 500, false)
+  }
+
+  test("gzip large file") {
+    // Block size won't matter
+    doPartitionTest(".gz", 500, true)
+  }
+
 }

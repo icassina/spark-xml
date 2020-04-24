@@ -22,7 +22,7 @@ import javax.xml.stream.XMLOutputFactory
 import scala.collection.Map
 
 import com.databricks.spark.xml.parsers.StaxXmlGenerator
-import com.sun.xml.internal.txw2.output.IndentingXMLStreamWriter
+import com.sun.xml.txw2.output.IndentingXMLStreamWriter
 import org.apache.hadoop.io.{Text, LongWritable}
 
 import org.apache.spark.rdd.RDD
@@ -101,6 +101,7 @@ private[xml] object XmlFile {
                 rowSchema,
                 indentingXmlWriter,
                 options)(iter.next())
+              indentingXmlWriter.flush()
               writer.toString
             }
             writer.reset()
