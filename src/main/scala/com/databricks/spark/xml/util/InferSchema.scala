@@ -230,6 +230,11 @@ private[xml] object InferSchema {
         case _: EndElement =>
           shouldStop = StaxXmlParserUtils.checkEndElement(parser)
 
+        case c: Characters if !c.isWhiteSpace =>
+          val dataTypes = nameToDataType.getOrElse(options.valueTag, ArrayBuffer.empty[DataType])
+          dataTypes += StringType
+          nameToDataType += (options.valueTag -> dataTypes)
+
         case _ => // do nothing
       }
     }

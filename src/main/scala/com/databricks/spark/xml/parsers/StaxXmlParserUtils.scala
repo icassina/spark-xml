@@ -75,13 +75,10 @@ private[xml] object StaxXmlParserUtils {
   def checkEndElement(parser: XMLEventReader): Boolean = {
     parser.peek match {
       case _: EndElement | _: EndDocument => true
-      case _: StartElement => false
-      case _ =>
-        // When other events are found here rather than `EndElement` or `StartElement`
-        // , we need to look further to decide if this is the end because this can be
-        // whitespace between `EndElement` and `StartElement`.
-        parser.nextEvent
+      case c: Characters if c.isWhiteSpace =>
+        parser.nextEvent()
         checkEndElement(parser)
+      case _ => false
     }
   }
 

@@ -351,6 +351,14 @@ private[xml] object StaxXmlParser extends Serializable {
             badRecordException = badRecordException.orElse(Some(exception))
         }
 
+        case c: Characters if !c.isWhiteSpace =>
+          nameToIndex.get(options.valueTag).foreach{ index =>
+            val existingValues = Option(row(index))
+              .map(_.asInstanceOf[ArrayBuffer[String]])
+              .getOrElse(ArrayBuffer.empty[String])
+            row(index) = existingValues :+ c.getData
+          }
+
         case _: EndElement =>
           shouldStop = StaxXmlParserUtils.checkEndElement(parser)
 
