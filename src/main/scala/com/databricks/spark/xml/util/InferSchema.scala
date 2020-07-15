@@ -121,6 +121,9 @@ private[xml] object InferSchema {
       value match {
         case null => NullType
         case v if v.isEmpty => NullType
+        case v if !options.zeroPrefixedStringsAsNumber
+          && v.length > 1
+          && v.headOption.contains('0') => StringType
         case v if isLong(v) => LongType
         case v if isInteger(v) => IntegerType
         case v if isDouble(v) => DoubleType
@@ -226,6 +229,11 @@ private[xml] object InferSchema {
 
         case _: EndElement =>
           shouldStop = StaxXmlParserUtils.checkEndElement(parser)
+
+        case c: Characters if !c.isWhiteSpace =>
+          val dataTypes = nameToDataType.getOrElse(options.valueTag, ArrayBuffer.empty[DataType])
+          dataTypes += StringType
+          nameToDataType += (options.valueTag -> dataTypes)
 
         case _ => // do nothing
       }

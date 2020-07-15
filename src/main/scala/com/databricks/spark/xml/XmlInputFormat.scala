@@ -15,16 +15,17 @@
  */
 package com.databricks.spark.xml
 
-import java.io.{IOException, InputStream, InputStreamReader, Reader}
+import java.io.{ IOException, InputStream, InputStreamReader, Reader }
 import java.nio.ByteBuffer
 import java.nio.charset.Charset
 
 import org.apache.commons.io.input.CountingInputStream
+import com.databricks.spark.xml.XmlRecordReader.PositionTracker
 import org.apache.hadoop.fs.Seekable
 import org.apache.hadoop.io.compress._
-import org.apache.hadoop.io.{LongWritable, Text}
-import org.apache.hadoop.mapreduce.{InputSplit, RecordReader, TaskAttemptContext}
-import org.apache.hadoop.mapreduce.lib.input.{FileSplit, TextInputFormat}
+import org.apache.hadoop.io.{ LongWritable, Text }
+import org.apache.hadoop.mapreduce.lib.input.{ FileSplit, TextInputFormat }
+import org.apache.hadoop.mapreduce.{ InputSplit, RecordReader, TaskAttemptContext }
 
 /**
  * Reads records that are delimited by a specific start/end tag.
@@ -329,6 +330,21 @@ private[xml] class XmlRecordReader extends RecordReader[LongWritable, Text] {
         CodecPool.returnDecompressor(decompressor)
         decompressor = null
       }
+    }
+  }
+}
+
+object XmlRecordReader {
+  trait PositionTracker extends Reader {
+    val initialPosition: Long
+
+    private[this] var offset: Long = 0
+
+    def getPosition: Long = initialPosition + offset
+
+    override def read(): Int = {
+      offset += 1
+      super.read()
     }
   }
 }
