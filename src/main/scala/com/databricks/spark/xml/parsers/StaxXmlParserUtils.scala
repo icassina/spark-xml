@@ -19,13 +19,14 @@ package com.databricks.spark.xml.parsers
 import com.databricks.spark.xml.XmlOptions
 import javax.xml.stream.XMLEventReader
 import java.io.StringReader
-import javax.xml.stream.{ EventFilter, XMLEventReader, XMLInputFactory, XMLStreamConstants }
+
+import com.databricks.spark.xml.parsers.StaxXmlParser.TrackingXmlEventReader
+import com.databricks.spark.xml.{ XmlOptions, XmlPath }
 import javax.xml.stream.events._
+import javax.xml.stream.{ EventFilter, XMLEventReader, XMLInputFactory, XMLStreamConstants }
 
 import scala.annotation.tailrec
 import scala.collection.JavaConverters._
-
-import scala.collection.JavaConverters.asScalaIteratorConverter
 
 private[xml] object StaxXmlParserUtils {
 
@@ -60,12 +61,14 @@ private[xml] object StaxXmlParserUtils {
   /**
    * Skips elements until this meets the given type of a element
    */
+  @tailrec
   def skipUntil(parser: XMLEventReader, eventType: Int): XMLEvent = {
-    var event = parser.peek
-    while (parser.hasNext && event.getEventType != eventType) {
-      event = parser.nextEvent
+    val nextEvent = parser.nextEvent()
+    if (nextEvent.getEventType == eventType) {
+      nextEvent
+    } else {
+      skipUntil(parser, eventType)
     }
-    event
   }
 
   /**
@@ -104,84 +107,52 @@ private[xml] object StaxXmlParserUtils {
     }
   }
 
-
-  /**
-   * Convert the current structure of XML document to a XML string.
-   */
-  def currentStructureAsString(parser: XMLEventReader, field: StartElement): String = {
-    def fieldDepthDelta(event: XMLEvent) = event match {
-      case startElement: StartElement if startElement.getName == field.getName => +1
-      case endElement: EndElement if endElement.getName == field.getName => -1
-      case _ => 0
+  @scala.annotation.tailrec
+  def structureAsString(path: XmlPath, parser: TrackingXmlEventReader, accumulatedStrings: Seq[String] = Seq.empty)(implicit options: XmlOptions): String = {
+    def makeFinalString() = if (options.ignoreSurroundingSpaces) {
+      accumulatedStrings.mkString("").trim()
+    } else {
+      accumulatedStrings.mkString("")
     }
 
-    @tailrec
-    def iterate(fieldDepth: Int, buffer: StringBuffer): String = {
-      if (fieldDepth == 0) {
-        buffer.toString
-      } else {
-        parser.peek() match {
-          case startElement: StartElement =>
-            parser.next()
-            val elementWithAttributes = startElement.getAttributes.asScala
-              .foldLeft(buffer.append(s"<${startElement.getName}")) {
-                case (runningBuffer, attribute: Attribute) =>
-                  runningBuffer
-                    .append(s""" "${attribute.getName.getLocalPart}"="${attribute.getValue}"""")
-              }
+    parser.nextEvent() match {
+      case startElement: StartElement =>
+        val attributes = convertAttributesToValuesMap(startElement.getAttributes.asScala.map(_.asInstanceOf[Attribute]).toArray, options)
+        structureAsString(path, parser,
+          accumulatedStrings :+ s"<${startElement.getName.getLocalPart}${attributes.map { case (key, value) => s""" "$key"="$value"""" }.mkString("")}>")
+      case endElement: EndElement =>
+        val endElementName = endElement.getName.getLocalPart
+        val endElementXml = s"</$endElementName>"
+        val startElementXmlPrefix = s"<$endElementName"
+        if (parser.currentPath.child(endElementName) == path) {
+          makeFinalString()
+        } else {
+          // Check if this should be a self closing element
+          val updatedAccumulatedStrings = accumulatedStrings.lastOption match {
+            case Some(lastElementString) if lastElementString.takeWhile(string => string != ' ' && string != '>') == startElementXmlPrefix =>
+              accumulatedStrings.dropRight(1) :+ lastElementString.dropRight(1) + "/>"
+            case _ =>
+              accumulatedStrings :+ endElementXml
+          }
 
-            val updatedBuffer = parser.peek() match {
-              case endElement: EndElement if endElement.getName == startElement.getName =>
-                parser.nextEvent()
-                elementWithAttributes.append("/>")
-              case _ => elementWithAttributes.append(">")
-            }
-
-            iterate(fieldDepth + fieldDepthDelta(startElement), updatedBuffer)
-          case endElement: EndElement if endElement.getName == field.getName && fieldDepth <= 1 =>
-            buffer.toString
-          case endElement: EndElement =>
-            parser.next()
-            iterate(
-              fieldDepth = fieldDepth + fieldDepthDelta(endElement),
-              buffer = buffer.append(s"</${endElement.getName}>"))
-          case characters: Characters =>
-            parser.next()
-            iterate(
-              fieldDepth = fieldDepth + fieldDepthDelta(characters),
-              buffer = buffer.append(s"${characters.getData}"))
-          case _: EndDocument =>
-            parser.next()
-            buffer.toString
+          structureAsString(path, parser, updatedAccumulatedStrings)
         }
-      }
+      case _: EndDocument => makeFinalString()
+      case other: XMLEvent =>
+        structureAsString(path, parser, accumulatedStrings :+ other.toString)
     }
-
-    iterate(1, new StringBuffer())
   }
 
   /**
-   * Skip the children of the current XML element.
+   * Skip the children of XML element.
    */
-  def skipChildren(parser: XMLEventReader): Unit = {
-    var shouldStop = checkEndElement(parser)
-    while (!shouldStop) {
-      parser.nextEvent match {
-        case _: StartElement =>
-          val e = parser.peek
-          if (e.isCharacters && e.asCharacters.isWhiteSpace) {
-            // There can be a `Characters` event between `StartElement`s.
-            // So, we need to check further to decide if this is a data or just
-            // a whitespace between them.
-            parser.next
-          }
-          if (parser.peek.isStartElement) {
-            skipChildren(parser)
-          }
-        case _: EndElement =>
-          shouldStop = checkEndElement(parser)
-        case _: XMLEvent => // do nothing
-      }
+  @tailrec
+  def skipChildren(path: XmlPath, parser: TrackingXmlEventReader): EndElement = {
+    val nextEvent = parser.nextEvent()
+    nextEvent match {
+      case endElement: EndElement if path.isChildOf(parser.currentPath)
+        && path.leafName == endElement.getName.getLocalPart => endElement
+      case _ => skipChildren(path, parser)
     }
   }
 }

@@ -17,17 +17,15 @@ package com.databricks.spark.xml.parsers
 
 import java.io.StringReader
 
+import com.databricks.spark.xml.parsers.StaxXmlParser.TrackingXmlEventReader
+import com.databricks.spark.xml.{ XmlOptions, XmlPath }
 import javax.xml.stream.events.Attribute
 import javax.xml.stream.{ XMLInputFactory, XMLStreamConstants }
 
-import scala.collection.JavaConverters._
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
-import com.databricks.spark.xml.XmlOptions
-import com.sun.xml.internal.stream.events.StartElementEvent
-import javax.xml.namespace.QName
 
-import scala.xml.XML
+import scala.collection.JavaConverters._
 
 final class StaxXmlParserUtilsSuite extends AnyFunSuite with BeforeAndAfterAll {
 
@@ -66,32 +64,34 @@ final class StaxXmlParserUtilsSuite extends AnyFunSuite with BeforeAndAfterAll {
     val input = <ROW><id>2</id><info><name>Sam Mad Dog Smith</name><amount><small>1</small>
       <large>9</large></amount>Some Text</info></ROW>
 
-    val parser = factory.createXMLEventReader(new StringReader(input.toString))
+    val parser = new TrackingXmlEventReader(factory.createXMLEventReader(new StringReader(input.toString)))
     // Skip until </id>
     StaxXmlParserUtils.skipUntil(parser, XMLStreamConstants.END_ELEMENT)
-    val xmlString = StaxXmlParserUtils.currentStructureAsString(parser,
-      new StartElementEvent(QName.valueOf("ROW")))
-
-    val expected = <info><name>Sam Mad Dog Smith</name><amount><small>1</small>
-      <large>9</large></amount>Some Text</info>
-
-    assert(XML.loadString(xmlString) === expected)
+    val xmlString = StaxXmlParserUtils.structureAsString(XmlPath(Seq("ROW")), parser)(new XmlOptions())
+    val expected = <info>
+      <name>Sam Mad Dog Smith</name><amount><small>1</small><large>9</large></amount></info>
+    assert(xmlString === expected.toString())
   }
 
   test("Skip XML children") {
-    val input = <ROW><info>
-      <name>Sam Mad Dog Smith</name><amount><small>1</small>
-        <large>9</large></amount></info><abc>2</abc><test>2</test></ROW>
-    val parser = factory.createXMLEventReader(new StringReader(input.toString))
+    val input = <ROW>
+      <info>
+        <name>Sam Mad Dog Smith</name> <amount>
+        <small>1</small>
+        <large>9</large>
+      </amount>
+      </info> <abc>2</abc> <test>2</test>
+    </ROW>
+    val parser = new TrackingXmlEventReader(
+      factory.createXMLEventReader(new StringReader(input.toString)))
     // We assume here it's reading the value within `id` field.
     StaxXmlParserUtils.skipUntil(parser, XMLStreamConstants.CHARACTERS)
-    StaxXmlParserUtils.skipChildren(parser)
-    assert(parser.nextEvent().asEndElement().getName.getLocalPart === "info")
-    parser.next()
-    StaxXmlParserUtils.skipChildren(parser)
-    assert(parser.nextEvent().asEndElement().getName.getLocalPart === "abc")
-    parser.next()
-    StaxXmlParserUtils.skipChildren(parser)
-    assert(parser.nextEvent().asEndElement().getName.getLocalPart === "test")
+    StaxXmlParserUtils.skipUntil(parser, XMLStreamConstants.CHARACTERS)
+    StaxXmlParserUtils.skipChildren(XmlPath(Seq("ROW", "info")), parser)
+    val shouldBeAbc = StaxXmlParserUtils.skipUntil(parser, XMLStreamConstants.START_ELEMENT)
+    assert(shouldBeAbc.asStartElement().getName.getLocalPart === "abc")
+    StaxXmlParserUtils.skipChildren(XmlPath(Seq("ROW", "abc")), parser)
+    val shouldBeTest = StaxXmlParserUtils.skipUntil(parser, XMLStreamConstants.START_ELEMENT)
+    assert(shouldBeTest.asStartElement().getName.getLocalPart === "test")
   }
 }
