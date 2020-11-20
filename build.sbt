@@ -1,6 +1,6 @@
 name := "spark-xml"
 
-version := "0.11.0.1"
+version := "0.10.0.5-onedot"
 
 organization := "com.databricks"
 
@@ -16,12 +16,12 @@ val sparkVersion = sys.props.get("spark.testVersion").getOrElse("2.4.7")
 autoScalaLibrary := false
 
 libraryDependencies ++= Seq(
-  "commons-io" % "commons-io" % "2.7",
+  "commons-io" % "commons-io" % "2.8.0",
   "org.glassfish.jaxb" % "txw2" % "2.3.2",
   "org.apache.ws.xmlschema" % "xmlschema-core" % "2.2.5",
-  "org.apache.hadoop" % "hadoop-common" % "2.8.5",
-  "org.slf4j" % "slf4j-api" % "1.7.25" % Provided,
-  "org.scalatest" %% "scalatest" % "3.2.2" % Test,
+  "org.apache.hadoop" % "hadoop-common" % "2.10.1",
+  "org.slf4j" % "slf4j-api" % "1.7.16" % Provided,
+  "org.scalatest" %% "scalatest" % "3.0.8" % Test,
   "com.novocode" % "junit-interface" % "0.11" % Test,
   "org.apache.spark" %% "spark-core" % sparkVersion % Provided,
   "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
