@@ -20,7 +20,7 @@ libraryDependencies ++= Seq(
   "org.glassfish.jaxb" % "txw2" % "2.3.2",
   "org.apache.ws.xmlschema" % "xmlschema-core" % "2.2.5",
   "org.apache.hadoop" % "hadoop-common" % "2.10.1",
-  "org.slf4j" % "slf4j-api" % "1.7.16" % Provided,
+  "org.slf4j" % "slf4j-api" % "1.7.25" % Provided,
   "org.scalatest" %% "scalatest" % "3.0.8" % Test,
   "com.novocode" % "junit-interface" % "0.11" % Test,
   "org.apache.spark" %% "spark-core" % sparkVersion % Provided,
