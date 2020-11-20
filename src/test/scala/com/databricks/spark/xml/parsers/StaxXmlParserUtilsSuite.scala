@@ -18,16 +18,14 @@ package com.databricks.spark.xml.parsers
 import java.io.StringReader
 
 import com.databricks.spark.xml.parsers.StaxXmlParser.TrackingXmlEventReader
-import com.databricks.spark.xml.{ XmlOptions, XmlPath }
+import com.databricks.spark.xml.{XmlOptions, XmlPath}
 import javax.xml.stream.events.Attribute
-import javax.xml.stream.{ XMLInputFactory, XMLStreamConstants }
-
-import org.scalatest.BeforeAndAfterAll
-import org.scalatest.funsuite.AnyFunSuite
+import javax.xml.stream.{XMLInputFactory, XMLStreamConstants}
+import org.scalatest.{BeforeAndAfterAll, FunSuite}
 
 import scala.collection.JavaConverters._
 
-final class StaxXmlParserUtilsSuite extends AnyFunSuite with BeforeAndAfterAll {
+final class StaxXmlParserUtilsSuite extends FunSuite with BeforeAndAfterAll {
 
   private val factory = XMLInputFactory.newInstance()
   factory.setProperty(XMLInputFactory.IS_NAMESPACE_AWARE, false)

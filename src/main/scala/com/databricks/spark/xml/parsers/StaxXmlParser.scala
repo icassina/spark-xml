@@ -141,7 +141,7 @@ private[xml] object StaxXmlParser extends Serializable {
       case st: StructType => convertObject(elementPath, parser, st, options)
       case MapType(StringType, vt, _) => convertMap(elementPath, parser, vt, options)
       case ArrayType(st, _) => convertField(elementPath, parser, st, options, field)
-      case _: StringType => StaxXmlParserUtils.structureAsString(elementPath, parser, field)(options)
+      case _: StringType => StaxXmlParserUtils.structureAsString(elementPath, parser, Seq.empty)(options)
     }
 
     val peek = parser.peek
@@ -166,7 +166,7 @@ private[xml] object StaxXmlParser extends Serializable {
           case _: EndElement if data.isEmpty => null
           case _: EndElement if options.treatEmptyValuesAsNulls => null
           case _: EndElement => data
-          case _ => convertField(parser, dataType, options, field)
+          case _ => convertField(elementPath, parser, dataType, options, field)
         }
 
       case (c: Characters, ArrayType(st, _)) =>
@@ -206,7 +206,7 @@ private[xml] object StaxXmlParser extends Serializable {
           case _: EndElement if data.isEmpty => null
           case _: EndElement if options.treatEmptyValuesAsNulls => null
           case _: EndElement => convertTo(data, dataType, options)
-          case _ => convertField(elementPath, parser, dataType, options)
+          case _ => convertField(elementPath, parser, dataType, options, field)
         }
       case (c: Characters, dt: DataType) =>
         val data = c.getData
@@ -318,7 +318,8 @@ private[xml] object StaxXmlParser extends Serializable {
                              parser: TrackingXmlEventReader,
                              schema: StructType,
                              options: XmlOptions,
-                             rootAttributes: Array[Attribute] = Array.empty): Row = {//    println(s"convertObject elementPath:$elementPath, parser.currentPath:${parser.currentPath}, schema:${schema}")
+                             rootAttributes: Array[Attribute] = Array.empty): Row = {
+    // println(s"convertObject elementPath:$elementPath, parser.currentPath:${parser.currentPath}, schema:${schema}")
     val row = new Array[Any](schema.length)
     val nameToIndex = schema.map(_.name).map(name => elementPath.child(name)).zipWithIndex.toMap
     // If there are attributes, then we process them first.
@@ -339,7 +340,8 @@ private[xml] object StaxXmlParser extends Serializable {
           nameToIndex.get(elementPath.child(field)) match {
             case Some(index) => schema(index).dataType match {
               case st: StructType =>
-                row(index) = convertObjectWithAttributes(elementPath.child(field), parser, st, options, attributes, e)
+                row(index) =
+                  convertObjectWithAttributes(elementPath.child(field), parser, st, options, attributes, startElement)
 
               case ArrayType(dt: DataType, _) =>
                 val values = Option(row(index))
@@ -347,14 +349,14 @@ private[xml] object StaxXmlParser extends Serializable {
                   .getOrElse(ArrayBuffer.empty[Any])
                 val newValue = dt match {
                   case st: StructType =>
-                    convertObjectWithAttributes(elementPath.child(field), parser, st, options, attributes, e)
+                    convertObjectWithAttributes(elementPath.child(field), parser, st, options, attributes, startElement)
                   case dt: DataType =>
-                    convertField(elementPath.child(field), parser, dt, options, e)
+                    convertField(elementPath.child(field), parser, dt, options, startElement)
                 }
                 row(index) = values :+ newValue
 
               case dt: DataType =>
-                row(index) = convertField(elementPath.child(field), parser, dt, options, e)
+                row(index) = convertField(elementPath.child(field), parser, dt, options, startElement)
             }
 
             case None =>

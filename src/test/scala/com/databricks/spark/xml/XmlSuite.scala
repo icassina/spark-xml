@@ -15,10 +15,10 @@
  */
 package com.databricks.spark.xml
 
-import java.io.{ File, PrintWriter }
-import java.nio.charset.{ StandardCharsets, UnsupportedCharsetException }
-import java.nio.file.{ Files, Path }
-import java.sql.{ Date, Timestamp }
+import java.io.{File, PrintWriter}
+import java.nio.charset.{StandardCharsets, UnsupportedCharsetException}
+import java.nio.file.{Files, Path}
+import java.sql.{Date, Timestamp}
 import java.util.TimeZone
 
 import com.databricks.spark.xml.XmlOptions._
@@ -26,18 +26,16 @@ import com.databricks.spark.xml.functions._
 import com.databricks.spark.xml.util._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.compress.GzipCodec
-import org.apache.hadoop.io.{ LongWritable, Text }
+import org.apache.hadoop.io.{LongWritable, Text}
 import org.apache.spark.SparkException
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.types._
-import org.apache.spark.sql.{ Row, SaveMode, SparkSession }
-import org.scalatest.BeforeAndAfterAll
-import org.scalatest.funsuite.AnyFunSuite
-import org.scalatest.matchers.should.Matchers
+import org.apache.spark.sql.{Row, SaveMode, SparkSession}
+import org.scalatest.{BeforeAndAfterAll, FunSuite, Matchers}
 
 import scala.io.Source
 
-final class XmlSuite extends AnyFunSuite with Matchers with BeforeAndAfterAll {
+final class XmlSuite extends FunSuite with Matchers with BeforeAndAfterAll {
 
   private val resDir = "src/test/resources/"
   private val agesFile = resDir + "ages.xml"

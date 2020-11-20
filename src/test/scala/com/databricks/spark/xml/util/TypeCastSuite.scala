@@ -20,12 +20,11 @@ import java.sql.{Date, Timestamp}
 import java.time.{ZoneId, ZonedDateTime}
 import java.util.Locale
 
-import org.scalatest.funsuite.AnyFunSuite
-
 import org.apache.spark.sql.types._
 import com.databricks.spark.xml.XmlOptions
+import org.scalatest.FunSuite
 
-final class TypeCastSuite extends AnyFunSuite {
+final class TypeCastSuite extends FunSuite {
 
   test("Can parse decimal type values") {
     val options = new XmlOptions()
