@@ -1,12 +1,12 @@
 name := "spark-xml"
 
-version := "0.11.0"
+version := "0.11.0-onedot"
 
 organization := "com.databricks"
 
-scalaVersion := "2.11.12"
+scalaVersion := "2.12.12"
 
-crossScalaVersions := Seq("2.11.12", "2.12.10")
+crossScalaVersions := Seq("2.11.12", "2.12.12")
 
 scalacOptions := Seq("-unchecked", "-deprecation")
 
