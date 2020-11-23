@@ -18,10 +18,9 @@ package com.databricks.spark.xml.util
 import java.nio.charset.{StandardCharsets, UnsupportedCharsetException}
 
 import org.apache.spark.SparkContext
-import org.scalatest.BeforeAndAfterAll
-import org.scalatest.funsuite.AnyFunSuite
+import org.scalatest.{BeforeAndAfterAll, FunSuite}
 
-final class XmlFileSuite extends AnyFunSuite with BeforeAndAfterAll {
+final class XmlFileSuite extends FunSuite with BeforeAndAfterAll {
 
   private val booksFile = "src/test/resources/books.xml"
   private val booksUnicodeInTagNameFile = "src/test/resources/books-unicode-in-tag-name.xml"

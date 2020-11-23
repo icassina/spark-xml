@@ -18,10 +18,10 @@ package com.databricks.spark.xml.util
 
 import java.nio.file.Paths
 
-import org.apache.spark.sql.types.{ArrayType, StructField, StructType, StringType}
-import org.scalatest.funsuite.AnyFunSuite
+import org.apache.spark.sql.types.{ArrayType, StringType, StructField, StructType}
+import org.scalatest.FunSuite
 
-class XSDToSchemaSuite extends AnyFunSuite {
+class XSDToSchemaSuite extends FunSuite {
 
   test("Basic parsing") {
     val parsedSchema = XSDToSchema.read(Paths.get("src/test/resources/basket.xsd"))

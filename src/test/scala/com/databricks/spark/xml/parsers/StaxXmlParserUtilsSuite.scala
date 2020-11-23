@@ -18,18 +18,17 @@ package com.databricks.spark.xml.parsers
 import java.io.StringReader
 
 import javax.xml.stream.events.Attribute
-import javax.xml.stream.{ XMLInputFactory, XMLStreamConstants }
+import javax.xml.stream.{XMLInputFactory, XMLStreamConstants}
 
 import scala.collection.JavaConverters._
-import org.scalatest.BeforeAndAfterAll
-import org.scalatest.funsuite.AnyFunSuite
+import org.scalatest.{BeforeAndAfterAll, FunSuite}
 import com.databricks.spark.xml.XmlOptions
 import com.sun.xml.internal.stream.events.StartElementEvent
 import javax.xml.namespace.QName
 
 import scala.xml.XML
 
-final class StaxXmlParserUtilsSuite extends AnyFunSuite with BeforeAndAfterAll {
+final class StaxXmlParserUtilsSuite extends FunSuite with BeforeAndAfterAll {
 
   private val factory = XMLInputFactory.newInstance()
   factory.setProperty(XMLInputFactory.IS_NAMESPACE_AWARE, false)
