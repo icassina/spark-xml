@@ -1,6 +1,6 @@
 name := "spark-xml"
 
-version := "0.10.0.5"
+version := "0.10.0.6-onedot"
 
 organization := "com.databricks"
 
@@ -11,17 +11,19 @@ crossScalaVersions := Seq("2.11.12", "2.12.12")
 scalacOptions := Seq("-unchecked", "-deprecation")
 
 val sparkVersion = sys.props.get("spark.testVersion").getOrElse("2.4.6")
+val hadoopVersion = "2.10.0"
 
 // To avoid packaging it, it's Provided below
 autoScalaLibrary := false
 
 libraryDependencies ++= Seq(
-  "commons-io" % "commons-io" % "2.8.0",
-  "org.glassfish.jaxb" % "txw2" % "2.3.2",
+  "commons-io" % "commons-io" % "2.7",
+  "org.glassfish.jaxb" % "txw2" % "2.3.3",
   "org.apache.ws.xmlschema" % "xmlschema-core" % "2.2.5",
-  "org.apache.hadoop" % "hadoop-common" % "2.10.0" % Provided,
-  "org.slf4j" % "slf4j-api" % "1.7.25" % Provided,
+  "org.slf4j" % "slf4j-api" % "1.7.25",
   "org.scalatest" %% "scalatest" % "3.1.1" % Test,
+  "org.apache.hadoop" % "hadoop-common" % hadoopVersion % Provided,
+  "org.apache.hadoop" % "hadoop-mapreduce-client-core" % hadoopVersion % Provided,
   "com.novocode" % "junit-interface" % "0.11" % Test,
   "org.apache.spark" %% "spark-core" % sparkVersion % Provided,
   "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
