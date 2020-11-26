@@ -19,7 +19,7 @@ libraryDependencies ++= Seq(
   "commons-io" % "commons-io" % "2.8.0",
   "org.glassfish.jaxb" % "txw2" % "2.3.2",
   "org.apache.ws.xmlschema" % "xmlschema-core" % "2.2.5",
-  "org.apache.hadoop" % "hadoop-common" % "2.10.1" % Provided,
+  "org.apache.hadoop" % "hadoop-common" % "2.10.0" % Provided,
   "org.slf4j" % "slf4j-api" % "1.7.25" % Provided,
   "org.scalatest" %% "scalatest" % "3.1.1" % Test,
   "com.novocode" % "junit-interface" % "0.11" % Test,
