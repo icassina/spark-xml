@@ -1,45 +1,36 @@
 name := "spark-xml"
 
-version := "0.10.0.4"
+version := "0.10.0.6-onedot"
 
 organization := "com.databricks"
 
-scalaVersion := "2.11.12"
+scalaVersion := "2.12.12"
 
-spName := "databricks/spark-xml"
-
-crossScalaVersions := Seq("2.11.12", "2.12.10")
+crossScalaVersions := Seq("2.11.12", "2.12.12")
 
 scalacOptions := Seq("-unchecked", "-deprecation")
 
-sparkVersion := sys.props.get("spark.testVersion").getOrElse("2.4.6")
-
-sparkComponents := Seq("core", "sql")
+val sparkVersion = sys.props.get("spark.testVersion").getOrElse("2.4.6")
+val hadoopVersion = "2.10.0"
 
 // To avoid packaging it, it's Provided below
 autoScalaLibrary := false
 
 libraryDependencies ++= Seq(
-  "commons-io" % "commons-io" % "2.6",
-  "org.glassfish.jaxb" % "txw2" % "2.3.2",
+  "commons-io" % "commons-io" % "2.7",
+  "org.glassfish.jaxb" % "txw2" % "2.3.3",
   "org.apache.ws.xmlschema" % "xmlschema-core" % "2.2.5",
-  "org.slf4j" % "slf4j-api" % "1.7.25" % Provided,
+  "org.slf4j" % "slf4j-api" % "1.7.25",
   "org.scalatest" %% "scalatest" % "3.1.1" % Test,
+  "org.apache.hadoop" % "hadoop-common" % hadoopVersion % Provided,
+  "org.apache.hadoop" % "hadoop-mapreduce-client-core" % hadoopVersion % Provided,
   "com.novocode" % "junit-interface" % "0.11" % Test,
-  "org.apache.spark" %% "spark-core" % sparkVersion.value % Test,
-  "org.apache.spark" %% "spark-sql" % sparkVersion.value % Test,
+  "org.apache.spark" %% "spark-core" % sparkVersion % Provided,
+  "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
   "org.scala-lang" % "scala-library" % scalaVersion.value % Provided
 )
 
-// This is necessary because of how we explicitly specify Spark dependencies
-// for tests rather than using the sbt-spark-package plugin to provide them.
-spIgnoreProvided := true
-
 publishMavenStyle := true
-
-spAppendScalaVersion := true
-
-spIncludeMaven := true
 
 pomExtra :=
   <url>https://github.com/databricks/spark-xml</url>
@@ -77,8 +68,7 @@ credentials += Credentials(
   sys.env.getOrElse("USERNAME", ""),
   sys.env.getOrElse("PASSWORD", ""))
 
-resolvers +=
-  "GCS Maven Central mirror" at "https://maven-central.storage-download.googleapis.com/maven2/"
+resolvers += "GCS Maven Central mirror" at "https://maven-central.storage-download.googleapis.com/maven2/"
 
 parallelExecution in Test := false
 
@@ -90,9 +80,8 @@ testOptions in Test := Seq(Tests.Argument(TestFrameworks.JUnit, "-v"))
 
 mimaPreviousArtifacts := Set("com.databricks" %% "spark-xml" % "0.9.0")
 
-val ignoredABIProblems = {
+mimaBinaryIssueFilters ++= {
+  import com.typesafe.tools.mima.core._
   Seq(
   )
 }
-
-mimaBinaryIssueFilters ++= ignoredABIProblems
