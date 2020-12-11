@@ -1,6 +1,6 @@
 name := "spark-xml"
 
-version := "0.10.0.6-onedot"
+version := "0.10.0.7-onedot"
 
 organization := "com.databricks"
 
@@ -10,8 +10,8 @@ crossScalaVersions := Seq("2.11.12", "2.12.12")
 
 scalacOptions := Seq("-unchecked", "-deprecation")
 
-val sparkVersion = sys.props.get("spark.testVersion").getOrElse("2.4.6")
-val hadoopVersion = "2.10.0"
+val sparkVersion = sys.props.get("spark.testVersion").getOrElse("3.0.1")
+val hadoopVersion = "3.2.1"
 
 // To avoid packaging it, it's Provided below
 autoScalaLibrary := false
