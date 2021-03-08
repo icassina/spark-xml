@@ -1,6 +1,6 @@
 name := "spark-xml"
 
-version := "0.10.0.7-onedot"
+version := "0.10.0.8-onedot"
 
 organization := "com.databricks"
 

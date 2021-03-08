@@ -167,8 +167,18 @@ private[xml] object StaxXmlParser extends Serializable {
         val convertedField = if (attributesOnly) {
           // If everything else is an attribute column, there's no complex structure.
           // Just return the value of the character element
-          val dt = st.find(_.name == options.valueTag).get.dataType
           parser.nextEvent()
+          val dt = {
+            st.find(f => f.name == options.valueTag || f.name.startsWith(options.attributePrefix))
+              .map(_.dataType)
+              .getOrElse {
+                if (st.fields.length == 1) {
+                  st.fields.head.dataType
+                } else {
+                  StringType
+                }
+              }
+          }
           convertTo(c.getData, dt, options)
         } else {
           // Otherwise, ignore this character element, and continue parsing the following complex
